@@ -55,7 +55,7 @@ func NewAlertRuleService(ruleStore RuleStore,
 	rulesPerRuleGroupLimit int64,
 	log log.Logger,
 	ns NotificationSettingsValidatorProvider,
-	authz ruleAccessControlService,
+	authz *accesscontrol.RuleService,
 ) *AlertRuleService {
 	return &AlertRuleService{
 		defaultIntervalSeconds: defaultIntervalSeconds,
@@ -68,7 +68,7 @@ func NewAlertRuleService(ruleStore RuleStore,
 		xact:                   xact,
 		log:                    log,
 		nsValidatorProvider:    ns,
-		authz:                  authz,
+		authz:                  newRuleAccessControlService(authz),
 	}
 }
 
