@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/grafana/pkg/services/folder"
 	alert_models "github.com/grafana/grafana/pkg/services/ngalert/models"
 	"github.com/grafana/grafana/pkg/services/ngalert/provisioning"
+	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/util"
 )
 
@@ -59,13 +60,13 @@ func (prov *defaultAlertRuleProvisioner) Provision(ctx context.Context,
 					return err
 				}
 			}
-			err = prov.ruleService.UpdateRuleGroup(ctx, group.OrgID, folderUID, group.Title, group.Interval)
+			err = prov.ruleService.UpdateRuleGroup(ctx, provisionerUser, group.OrgID, folderUID, group.Title, group.Interval)
 			if err != nil {
 				return err
 			}
 		}
 		for _, deleteRule := range file.DeleteRules {
-			err := prov.ruleService.DeleteAlertRule(ctx, deleteRule.OrgID,
+			err := prov.ruleService.DeleteAlertRule(ctx, provisionerUser, deleteRule.OrgID,
 				deleteRule.UID, alert_models.ProvenanceFile)
 			if err != nil {
 				return err
@@ -80,17 +81,17 @@ func (prov *defaultAlertRuleProvisioner) provisionRule(
 	orgID int64,
 	rule alert_models.AlertRule) error {
 	prov.logger.Debug("provisioning alert rule", "uid", rule.UID, "org", rule.OrgID)
-	_, _, err := prov.ruleService.GetAlertRule(ctx, orgID, rule.UID)
+	_, _, err := prov.ruleService.GetAlertRule(ctx, provisionerUser, orgID, rule.UID)
 	if err != nil && !errors.Is(err, alert_models.ErrAlertRuleNotFound) {
 		return err
 	} else if err != nil {
 		prov.logger.Debug("creating rule", "uid", rule.UID, "org", rule.OrgID)
 		// 0 is passed as userID as then the quota logic will only check for
 		// the organization quota, as we don't have any user scope here.
-		_, err = prov.ruleService.CreateAlertRule(ctx, rule, alert_models.ProvenanceFile, 0)
+		_, err = prov.ruleService.CreateAlertRule(ctx, provisionerUser, rule, alert_models.ProvenanceFile)
 	} else {
 		prov.logger.Debug("updating rule", "uid", rule.UID, "org", rule.OrgID)
-		_, err = prov.ruleService.UpdateAlertRule(ctx, rule, alert_models.ProvenanceFile)
+		_, err = prov.ruleService.UpdateAlertRule(ctx, provisionerUser, rule, alert_models.ProvenanceFile)
 	}
 	return err
 }
@@ -129,3 +130,6 @@ func (prov *defaultAlertRuleProvisioner) getOrCreateFolderUID(
 
 	return cmdResult.UID, nil
 }
+
+// UserID is 0 to use org quota
+var provisionerUser = &user.SignedInUser{UserID: 0, Login: "alert_provisioner", IsGrafanaAdmin: true}

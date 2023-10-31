@@ -52,3 +52,25 @@ func (p *provisioningRuleAccessControl) CanReadAllRules(ctx context.Context, use
 func (p *provisioningRuleAccessControl) CanWriteAllRules(ctx context.Context, user identity.Requester) (bool, error) {
 	return p.HasAccess(ctx, user, ac.EvalPermission(ac.ActionAlertingProvisioningWrite))
 }
+
+// access control that simulate full access to read\write rules
+type allAccessControlService struct {
+}
+
+var _ ruleAccessControlService = &allAccessControlService{}
+
+func (a allAccessControlService) AuthorizeAccessToRuleGroup(ctx context.Context, user identity.Requester, rules models.RulesGroup) error {
+	return nil
+}
+
+func (a allAccessControlService) AuthorizeRuleChanges(ctx context.Context, user identity.Requester, change *store.GroupDelta) error {
+	return nil
+}
+
+func (a allAccessControlService) CanReadAllRules(ctx context.Context, user identity.Requester) (bool, error) {
+	return true, nil
+}
+
+func (a allAccessControlService) CanWriteAllRules(ctx context.Context, user identity.Requester) (bool, error) {
+	return true, nil
+}

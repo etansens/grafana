@@ -272,7 +272,7 @@ func (ps *ProvisioningServiceImpl) ProvisionAlerting(ctx context.Context) error 
 		FolderService:    nil, // we don't use it yet
 		DashboardService: ps.dashboardService,
 	}
-	ruleService := provisioning.NewAlertRuleService(
+	ruleService := provisioning.NewAlertRuleServiceWithBypassPermissions(
 		st,
 		st,
 		ps.dashboardService,

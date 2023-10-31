@@ -45,6 +45,28 @@ type AlertRuleService struct {
 	authz                  ruleAccessControlService
 }
 
+// NewAlertRuleServiceWithBypassPermissions creates a AlertRuleService that does not validate user access to perform read\write operations on rules.
+func NewAlertRuleServiceWithBypassPermissions(ruleStore RuleStore,
+	provenanceStore ProvisioningStore,
+	dashboardService dashboards.DashboardService,
+	quotas QuotaChecker,
+	xact TransactionManager,
+	defaultIntervalSeconds int64,
+	baseIntervalSeconds int64,
+	log log.Logger) *AlertRuleService {
+	return &AlertRuleService{
+		defaultIntervalSeconds: defaultIntervalSeconds,
+		baseIntervalSeconds:    baseIntervalSeconds,
+		ruleStore:              ruleStore,
+		provenanceStore:        provenanceStore,
+		dashboardService:       dashboardService,
+		quotas:                 quotas,
+		xact:                   xact,
+		log:                    log,
+		authz:                  &allAccessControlService{},
+	}
+}
+
 func NewAlertRuleService(ruleStore RuleStore,
 	provenanceStore ProvisioningStore,
 	dashboardService dashboards.DashboardService,
