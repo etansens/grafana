@@ -2,7 +2,6 @@ package fakes
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/grafana/pkg/services/auth/identity"
 	"github.com/grafana/grafana/pkg/services/folder"
 	"github.com/grafana/grafana/pkg/services/ngalert/models"
+	"github.com/grafana/grafana/pkg/services/ngalert/store"
 	"github.com/grafana/grafana/pkg/util"
 )
 
@@ -283,6 +283,12 @@ func (f *RuleStore) InsertAlertRules(_ context.Context, q []models.AlertRule) ([
 	defer f.mtx.Unlock()
 	f.RecordedOps = append(f.RecordedOps, q)
 	ids := make([]models.AlertRuleKeyWithId, 0, len(q))
+	for _, rule := range q {
+		ids = append(ids, models.AlertRuleKeyWithId{
+			AlertRuleKey: rule.GetKey(),
+			ID:           rand.Int63(),
+		})
+	}
 	if err := f.Hook(q); err != nil {
 		return ids, err
 	}
@@ -296,12 +302,16 @@ func (f *RuleStore) InTransaction(ctx context.Context, fn func(c context.Context
 func (f *RuleStore) GetRuleGroupInterval(ctx context.Context, orgID int64, namespaceUID string, ruleGroup string) (int64, error) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
+	f.RecordedOps = append(f.RecordedOps, GenericRecordedQuery{
+		Name:   "GetRuleGroupInterval",
+		Params: []any{orgID, namespaceUID, ruleGroup},
+	})
 	for _, rule := range f.Rules[orgID] {
 		if rule.RuleGroup == ruleGroup && rule.NamespaceUID == namespaceUID {
 			return rule.IntervalSeconds, nil
 		}
 	}
-	return 0, errors.New("rule group not found")
+	return 0, store.ErrAlertRuleGroupNotFound
 }
 
 func (f *RuleStore) UpdateRuleGroup(ctx context.Context, orgID int64, namespaceUID string, ruleGroup string, interval int64) error {
