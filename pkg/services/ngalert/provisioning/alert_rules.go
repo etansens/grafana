@@ -444,36 +444,27 @@ func (service *AlertRuleService) ReplaceRuleGroup(ctx context.Context, user *use
 	return service.persistDelta(ctx, orgID, delta, user, provenance)
 }
 
-func (service *AlertRuleService) DeleteRuleGroup(ctx context.Context, orgID int64, namespaceUID, group string, provenance models.Provenance) error {
-	// List all rules in the group.
-	q := models.ListAlertRulesQuery{
-		OrgID:         orgID,
-		NamespaceUIDs: []string{namespaceUID},
-		RuleGroup:     group,
-	}
-	ruleList, err := service.ruleStore.ListAlertRules(ctx, &q)
+func (service *AlertRuleService) DeleteRuleGroup(ctx context.Context, user *user.SignedInUser, orgID int64, namespaceUID, group string, provenance models.Provenance) error {
+	delta, err := store.CalculateRuleGroupDelete(ctx, service.ruleStore, models.AlertRuleGroupKey{
+		OrgID:        orgID,
+		NamespaceUID: namespaceUID,
+		RuleGroup:    group,
+	})
 	if err != nil {
 		return err
 	}
-	if len(ruleList) == 0 {
-		return store.ErrAlertRuleGroupNotFound
-	}
 
-	// Check provenance for all rules in the group. Fail to delete if any deletions aren't allowed.
-	for _, rule := range ruleList {
-		storedProvenance, err := service.provenanceStore.GetProvenance(ctx, rule, rule.OrgID)
+	// check if the current user has permissions to all rules and can bypass the regular authorization validation.
+	if can, err := service.authz.CanWriteAllRules(ctx, user); !can || err != nil {
 		if err != nil {
 			return err
 		}
-		if storedProvenance != provenance && storedProvenance != models.ProvenanceNone {
-			return fmt.Errorf("cannot delete with provided provenance '%s', needs '%s'", provenance, storedProvenance)
+		if err := service.authz.AuthorizeRuleChanges(ctx, user, delta); err != nil {
+			return err
 		}
 	}
 
-	// Delete all rules.
-	return service.xact.InTransaction(ctx, func(ctx context.Context) error {
-		return service.deleteRules(ctx, orgID, ruleList...)
-	})
+	return service.persistDelta(ctx, orgID, delta, user, provenance)
 }
 
 func (service *AlertRuleService) calcDelta(ctx context.Context, orgID int64, group models.AlertRuleGroup) (*store.GroupDelta, error) {
@@ -523,7 +514,7 @@ func (service *AlertRuleService) calcDelta(ctx context.Context, orgID int64, gro
 	return store.UpdateCalculatedRuleFields(delta), nil
 }
 
-func (service *AlertRuleService) persistDelta(ctx context.Context, orgID int64, delta *store.GroupDelta, user identity.Requester, provenance models.Provenance) error {
+func (service *AlertRuleService) persistDelta(ctx context.Context, orgID int64, delta *store.GroupDelta, user *user.SignedInUser, provenance models.Provenance) error {
 	return service.xact.InTransaction(ctx, func(ctx context.Context) error {
 		// Delete first as this could prevent future unique constraint violations.
 		if len(delta.Delete) > 0 {
@@ -534,7 +525,7 @@ func (service *AlertRuleService) persistDelta(ctx context.Context, orgID int64, 
 					return err
 				}
 				if canUpdate := canUpdateProvenanceInRuleGroup(storedProvenance, provenance); !canUpdate {
-					return fmt.Errorf("cannot update with provided provenance '%s', needs '%s'", provenance, storedProvenance)
+					return fmt.Errorf("cannot delete with provided provenance '%s', needs '%s'", provenance, storedProvenance)
 				}
 			}
 			if err := service.deleteRules(ctx, orgID, delta.Delete...); err != nil {
@@ -580,8 +571,7 @@ func (service *AlertRuleService) persistDelta(ctx context.Context, orgID int64, 
 			}
 		}
 
-		userID, _ := user.GetNamespacedID()
-		if err := service.checkLimitsTransactionCtx(ctx, orgID, userID); err != nil {
+		if err := service.checkLimitsTransactionCtx(ctx, orgID, user.UserID); err != nil {
 			return err
 		}
 

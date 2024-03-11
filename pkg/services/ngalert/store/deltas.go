@@ -227,6 +227,32 @@ func CalculateRuleUpdate(ctx context.Context, ruleReader RuleReader, rule *model
 }
 
 // CalculateRuleCreate calculates GroupDelta that reflects an operation of removing a rule from the group.
+func CalculateRuleGroupDelete(ctx context.Context, ruleReader RuleReader, groupKey models.AlertRuleGroupKey) (*GroupDelta, error) {
+	// List all rules in the group.
+	q := models.ListAlertRulesQuery{
+		OrgID:         groupKey.OrgID,
+		NamespaceUIDs: []string{groupKey.NamespaceUID},
+		RuleGroup:     groupKey.RuleGroup,
+	}
+	ruleList, err := ruleReader.ListAlertRules(ctx, &q)
+	if err != nil {
+		return nil, err
+	}
+	if len(ruleList) == 0 {
+		return nil, ErrAlertRuleGroupNotFound
+	}
+
+	delta := &GroupDelta{
+		GroupKey: groupKey,
+		Delete:   ruleList,
+		AffectedGroups: map[models.AlertRuleGroupKey]models.RulesGroup{
+			groupKey: ruleList,
+		},
+	}
+	return delta, nil
+}
+
+// CalculateRuleCreate calculates GroupDelta that reflects an operation of removing a rule from the group.
 func CalculateRuleDelete(ctx context.Context, ruleReader RuleReader, ruleKey models.AlertRuleKey) (*GroupDelta, error) {
 	q := &models.GetAlertRulesGroupByRuleUIDQuery{
 		UID:   ruleKey.UID,
