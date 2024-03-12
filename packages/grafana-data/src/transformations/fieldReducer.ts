@@ -26,6 +26,7 @@ export enum ReducerID {
   allIsNull = 'allIsNull',
   allValues = 'allValues',
   uniqueValues = 'uniqueValues',
+  m95 = 'm95',
 }
 
 // Internal function
@@ -247,6 +248,12 @@ export const fieldReducers = new Registry<FieldReducerInfo>(() => [
       uniqueValues: [...new Set(field.values.toArray())],
     }),
   },
+  {
+    id: ReducerID.m95,
+    name: 'M95',
+    description: 'M95 value',
+    standard: true,
+  },
 ]);
 
 export function doStandardCalcs(field: Field, ignoreNulls: boolean, nullAsZero: boolean): FieldCalcs {
@@ -272,16 +279,19 @@ export function doStandardCalcs(field: Field, ignoreNulls: boolean, nullAsZero: 
 
     // Just used for calculations -- not exposed as a stat
     previousDeltaUp: true,
+    m95: null,
   } as FieldCalcs;
 
   const data = field.values;
   calcs.count = data.length;
 
+  const m95Data = [];
+
   const isNumberField = field.type === FieldType.number || FieldType.time;
 
   for (let i = 0; i < data.length; i++) {
     let currentValue = data.get(i);
-
+    m95Data.push(currentValue);
     if (i === 0) {
       calcs.first = currentValue;
     }
@@ -384,6 +394,12 @@ export function doStandardCalcs(field: Field, ignoreNulls: boolean, nullAsZero: 
   if (isNumber(calcs.firstNotNull) && isNumber(calcs.diff)) {
     calcs.diffperc = calcs.diff / calcs.firstNotNull;
   }
+
+
+  const descData = m95Data.sort((a,b) => b - a);
+  const idx = Math.floor(calcs.count * 0.05);
+  calcs.m95 = descData[idx];
+
   return calcs;
 }
 

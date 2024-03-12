@@ -56,15 +56,16 @@ done
 # shellcheck disable=SC2124
 EXTRA_OPTS="$@"
 
-cd /go/src/github.com/grafana/grafana
+#cd /go/src/github.com/grafana/grafana
+cd /data/apps/grafana
 echo "current dir: $(pwd)"
 
 if [ "$CIRCLE_TAG" != "" ]; then
   echo "Building releases from tag $CIRCLE_TAG"
-  OPT="-includeBuildId=false ${EXTRA_OPTS}"
+  #OPT="-includeBuildId=false ${EXTRA_OPTS}"
 else
   echo "Building incremental build for $CIRCLE_BRANCH"
-  OPT="-buildId=${CIRCLE_WORKFLOW_ID} ${EXTRA_OPTS}"
+  #OPT="-buildId=${CIRCLE_WORKFLOW_ID} ${EXTRA_OPTS}"
 fi
 
 
