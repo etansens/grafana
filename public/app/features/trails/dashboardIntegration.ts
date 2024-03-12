@@ -1,4 +1,5 @@
 import { PanelMenuItem, PanelModel } from '@grafana/data';
+import { QueryBuilderLabelFilter } from '@grafana/prometheus/src/querybuilder/shared/types';
 import { getDataSourceSrv } from '@grafana/runtime';
 import { SceneQueryRunner, SceneTimeRange, VizPanel } from '@grafana/scenes';
 import appEvents from 'app/core/app_events';
@@ -25,43 +26,90 @@ export function addDataTrailPanelAction(
   }
 
   const ds = getDataSourceSrv().getInstanceSettings(queryRunner.state.datasource);
-  console.log('DS', ds);
-  if (!ds || ds.meta.id !== 'prometheus' || queryRunner.state.queries.length > 1) {
+
+  if (!ds || ds.meta.id !== 'prometheus' || queryRunner.state.queries.length < 1) {
     return;
   }
 
-  const query = queryRunner.state.queries[0];
-  const parsedResult = buildVisualQueryFromString(query.expr);
-  if (parsedResult.errors.length > 0) {
+  if (ds === undefined) {
     return;
   }
 
-  items.push({
-    text: 'Data trail',
-    iconClassName: 'code-branch',
-    onClick: () => {
-      if (dashboard instanceof DashboardScene) {
-        const drawer = new DataTrailDrawer({
-          query: parsedResult.query,
-          dsRef: ds,
-          timeRange: dashboard.state.$timeRange!.clone(),
-        });
-        dashboard.showModal(drawer);
-      } else if (dashboard instanceof DashboardModel) {
-        const drawer = new DataTrailDrawer({
-          query: parsedResult.query,
-          dsRef: ds,
-          timeRange: new SceneTimeRange({ ...dashboard.time }),
-        });
+  const queries = queryRunner.state.queries.map((q) => q.expr);
 
+  type MetricAndLabels = {
+    metric: string;
+    labels: QueryBuilderLabelFilter[];
+    queries: string[];
+  };
+
+  const metricItems: MetricAndLabels[] = [];
+
+  // We only support label filters with the '=' operator
+  function isEquals(labelFilter: QueryBuilderLabelFilter) {
+    return labelFilter.op === '=';
+  }
+
+  queries.forEach((query) => {
+    const struct = buildVisualQueryFromString(query);
+    if (struct.errors.length > 0) {
+      return;
+    }
+
+    const { metric, labels } = struct.query;
+
+    metricItems.push({ metric, labels: labels.filter(isEquals), queries });
+    struct.query.binaryQueries?.forEach(({ query }) => {
+      const { metric, labels } = query;
+      metricItems.push({ metric, labels: labels.filter(isEquals), queries });
+    });
+  });
+
+  const getClickHandler = ({ metric, labels, queries }: MetricAndLabels) => {
+    const timeRange =
+      dashboard instanceof DashboardScene
+        ? dashboard.state.$timeRange!.clone()
+        : new SceneTimeRange({ ...dashboard.time });
+
+    const drawer = new DataTrailDrawer({
+      metric,
+      labels,
+      queries,
+      dsRef: ds,
+      timeRange,
+    });
+
+    if (dashboard instanceof DashboardScene) {
+      return () => dashboard.showModal(drawer);
+    } else {
+      return () => {
         const payload = {
           component: DataTrailDrawer.Component,
           props: { model: drawer },
         };
 
         appEvents.publish(new ShowModalReactEvent(payload));
-      }
-    },
-    shortcut: 'p s',
+      };
+    }
+  };
+
+  const uniqueMenuTexts = new Set<string>();
+  function isUnique({ text }: { text: string }) {
+    const before = uniqueMenuTexts.size;
+    uniqueMenuTexts.add(text);
+    const after = uniqueMenuTexts.size;
+    return after > before;
+  }
+
+  const subMenu: PanelMenuItem[] = metricItems.map((item) => ({
+    text: `${item.metric}${item.labels.length === 0 ? '' : `{${item.labels.map(({ label, op, value }) => `${label}${op}${value}`)}}`}`,
+    onClick: getClickHandler(item),
+  }));
+
+  items.push({
+    text: 'Explore metrics',
+    iconClassName: 'code-branch',
+    shortcut: 'p m',
+    subMenu: subMenu.filter(isUnique),
   });
 }

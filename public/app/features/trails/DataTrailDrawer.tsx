@@ -1,10 +1,12 @@
 import React from 'react';
 
+import { QueryBuilderLabelFilter } from '@grafana/prometheus/src/querybuilder/shared/types';
 import { getDataSourceSrv } from '@grafana/runtime';
 import { SceneComponentProps, SceneObjectBase, SceneObjectState, SceneTimeRangeLike } from '@grafana/scenes';
 import { DataSourceRef } from '@grafana/schema';
 import { Drawer } from '@grafana/ui';
-import { PromVisualQuery } from 'app/plugins/datasource/prometheus/querybuilder/types';
+import appEvents from 'app/core/app_events';
+import { ShowModalReactEvent } from 'app/types/events';
 
 import { getDashboardSceneFor } from '../dashboard-scene/utils/utils';
 
@@ -14,7 +16,9 @@ import { OpenEmbeddedTrailEvent } from './shared';
 
 interface DataTrailDrawerState extends SceneObjectState {
   timeRange: SceneTimeRangeLike;
-  query: PromVisualQuery;
+  metric: string;
+  labels?: QueryBuilderLabelFilter[];
+  queries?: string[];
   dsRef: DataSourceRef;
 }
 
@@ -37,8 +41,13 @@ export class DataTrailDrawer extends SceneObjectBase<DataTrailDrawerState> {
   };
 
   onClose = () => {
-    const dashboard = getDashboardSceneFor(this);
-    dashboard.closeModal();
+    try {
+      const dashboard = getDashboardSceneFor(this);
+      dashboard.closeModal();
+    } catch (e: unknown) {
+      const event = new ShowModalReactEvent({ component: () => null });
+      appEvents.publish(event);
+    }
   };
 }
 
@@ -52,14 +61,14 @@ function DataTrailDrawerRenderer({ model }: SceneComponentProps<DataTrailDrawer>
   );
 }
 
-export function buildDataTrailFromQuery({ query, dsRef, timeRange }: DataTrailDrawerState) {
-  const filters = query.labels.map((label) => ({ key: label.label, value: label.value, operator: label.op }));
+export function buildDataTrailFromQuery({ metric, labels, dsRef, timeRange }: DataTrailDrawerState) {
+  const filters = labels?.map((label) => ({ key: label.label, value: label.value, operator: label.op }));
 
   const ds = getDataSourceSrv().getInstanceSettings(dsRef);
 
   return new DataTrail({
     $timeRange: timeRange,
-    metric: query.metric,
+    metric,
     initialDS: ds?.uid,
     initialFilters: filters,
     embedded: true,
